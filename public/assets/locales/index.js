@@ -24,7 +24,8 @@ export async function init() {
     let selectedLanguage = "en";
     switch (navigator.language) {
     case "zh-TW":
-        selectedLanguage = "zh_tw";
+    case "fr-CA":
+        selectedLanguage = navigator.language;
         break;
     default:
         const userLanguage = navigator.language.split("-")[0] || "";
@@ -39,6 +40,7 @@ export async function init() {
             selectedLanguage = userLanguage;
         }
     }
+    document.documentElement.setAttribute("lang", selectedLanguage);
     if (selectedLanguage === "en") {
         return Promise.resolve();
     }

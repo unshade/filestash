@@ -1,6 +1,6 @@
 import { createElement, createRender } from "../../../lib/skeleton/index.js";
 import rxjs, { effect, onClick } from "../../../lib/rx.js";
-import { qs } from "../../../lib/dom.js";
+import { qs, safe } from "../../../lib/dom.js";
 import t from "../../../locales/index.js";
 import { loadJS, loadCSS } from "../../../helpers/loader.js";
 
@@ -100,7 +100,7 @@ async function componentMap(render, { metadata }) {
     render($page);
 
     await new Promise((resolve) => setTimeout(resolve, 500));
-    const TILE_SERVER = "https://tile.openstreetmap.org/${z}/${x}/${y}.png";
+    const TILE_SERVER = "https://tile.openstreetmap.de/${z}/${x}/${y}.png";
     const TILE_SIZE = Math.floor($page.clientWidth / 3 * 100) / 100;
     if (TILE_SIZE === 0) return;
     $page.style.height = "${TILE_SIZE*3}px;";
@@ -128,7 +128,7 @@ async function componentMap(render, { metadata }) {
         };
     }(lat, lng, 11));
     const $tiles = createElement(`
-        <div class="bigpicture">
+        <div class="bigpicture" aria-hidden="true">
             <div class="line">
                 <img crossorigin="anonymous" src="${mapper.tile(TILE_SERVER, -1, -1)}" class="btl" style="height: ${TILE_SIZE}px;">
                 <img crossorigin="anonymous" src="${mapper.tile(TILE_SERVER, 0, -1)}" style="height: ${TILE_SIZE}px;">
@@ -198,8 +198,8 @@ function componentMore(render, { metadata }) {
             break;
         default: $all.appendChild(createElement(`
             <div class="meta_key">
-                <div class="title ellipsis">${formatKey(key)}: </div>
-                <div class="value ellipsis" title="${formatValue(key)}">${formatValue(key)}</div>
+                <div class="title ellipsis">${safe(formatKey(key))}: </div>
+                <div class="value ellipsis" title="${safe(formatValue(key))}">${safe(formatValue(key))}</div>
             </div>
         `));
         }

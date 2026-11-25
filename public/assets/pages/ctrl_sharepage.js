@@ -39,7 +39,7 @@ function ctrlPassword(render, { shareID, setState }) {
             <form>
                 <div class="input_group">
                     <input type="password" name="password" placeholder="${t("Password")}" class="component_input" autocomplete>
-                    <button class="transparent">
+                    <button class="transparent" aria-label="${t("Connect")}">
                         <component-icon name="arrow_right"></component-icon>
                     </button>
                 </div>
@@ -54,8 +54,8 @@ function ctrlEmail(render, { shareID, setState }) {
         <div class="component_container component_page_sharelogin">
             <form>
                 <div class="input_group">
-                    <input type="email" name="email" placeholder="${t("Your email address")}" class="component_input" autocomplete>
-                    <button class="transparent">
+                    <input type="email" name="email" placeholder="${t("Your email address")}" class="component_input" autocomplete="email">
+                    <button class="transparent" aria-label="${t("Connect")}">
                         <component-icon name="arrow_right"></component-icon>
                     </button>
                 </div>
@@ -71,7 +71,7 @@ function ctrlEmailCodeVerification(render, { shareID, setState }) {
             <form>
                 <div class="input_group">
                     <input type="text" name="code" placeholder="${t("Code")}" class="component_input" autocomplete>
-                    <button class="transparent">
+                    <button class="transparent" aria-label="${t("Connect")}">
                         <component-icon name="arrow_right"></component-icon>
                     </button>
                 </div>

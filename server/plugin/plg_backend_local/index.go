@@ -1,28 +1,32 @@
 package plg_backend_local
 
 import (
-	. "github.com/mickael-kerjean/filestash/server/common"
-	"golang.org/x/crypto/bcrypt"
 	"io"
 	"os"
 	"os/user"
+	"runtime"
+
+	. "github.com/mickael-kerjean/filestash/server/common"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func init() {
-	Backend.Register("local", &Local{})
+	Backend.Register("local", &Local{os.Getenv("LOCAL_BACKEND_SECRET")})
 }
 
-type Local struct{}
+type Local struct {
+	secret string
+}
 
 func (this Local) Init(params map[string]string, app *App) (IBackend, error) {
-	backend := &Local{}
-	if params["password"] == Config.Get("general.secret_key").String() {
-		return backend, nil
+	if this.secret != "" && params["password"] == this.secret {
+		return &Local{}, nil
 	} else if err := bcrypt.CompareHashAndPassword(
 		[]byte(Config.Get("auth.admin").String()),
 		[]byte(params["password"]),
 	); err == nil {
-		return backend, nil
+		return &Local{}, nil
 	}
 	return nil, ErrAuthenticationFailed
 }
@@ -63,11 +67,14 @@ func ensurePath(path string) string {
 	if _, err := os.Stat(path); err != nil {
 		return "/"
 	}
-	return path
+	return fromOSPath(path)
 }
 
 func (this Local) Ls(path string) ([]os.FileInfo, error) {
-	f, err := SafeOsOpenFile(path, os.O_RDONLY, os.ModePerm)
+	if path == "/" && runtime.GOOS == "windows" {
+		return listDrives()
+	}
+	f, err := SafeOsOpenFile(osPath(path), os.O_RDONLY, os.ModePerm)
 	if err != nil {
 		return nil, err
 	}
@@ -76,11 +83,17 @@ func (this Local) Ls(path string) ([]os.FileInfo, error) {
 		f.Close()
 		return nil, err
 	}
-	return files, f.Close()
+	out := files[:0]
+	for _, file := range files {
+		if file.Mode().IsRegular() || file.IsDir() {
+			out = append(out, file)
+		}
+	}
+	return out, f.Close()
 }
 
 func (this Local) Stat(path string) (os.FileInfo, error) {
-	f, err := SafeOsOpenFile(path, os.O_RDONLY, os.ModePerm)
+	f, err := SafeOsOpenFile(osPath(path), os.O_RDONLY, os.ModePerm)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +106,7 @@ func (this Local) Stat(path string) (os.FileInfo, error) {
 }
 
 func (this Local) Cat(path string) (io.ReadCloser, error) {
-	f, err := SafeOsOpenFile(path, os.O_RDONLY, os.ModePerm)
+	f, err := SafeOsOpenFile(osPath(path), os.O_RDONLY, os.ModePerm)
 	if err != nil {
 		return nil, err
 	}
@@ -105,23 +118,23 @@ func (this Local) Cat(path string) (io.ReadCloser, error) {
 		f.Close()
 		return nil, ErrNotFound
 	}
-	return f, nil
+	return NewDirect(f, fs), nil
 }
 
 func (this Local) Mkdir(path string) error {
-	return SafeOsMkdir(path, 0755)
+	return SafeOsMkdir(osPath(path), 0755)
 }
 
 func (this Local) Rm(path string) error {
-	return SafeOsRemoveAll(path)
+	return SafeOsRemoveAll(osPath(path))
 }
 
 func (this Local) Mv(from, to string) error {
-	return SafeOsRename(from, to)
+	return SafeOsRename(osPath(from), osPath(to))
 }
 
 func (this Local) Save(path string, content io.Reader) error {
-	f, err := SafeOsOpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0664)
+	f, err := SafeOsOpenFile(osPath(path), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0664)
 	if err != nil {
 		return err
 	}
@@ -133,7 +146,7 @@ func (this Local) Save(path string, content io.Reader) error {
 }
 
 func (this Local) Touch(path string) error {
-	f, err := SafeOsOpenFile(path, os.O_WRONLY|os.O_CREATE, os.ModePerm)
+	f, err := SafeOsOpenFile(osPath(path), os.O_WRONLY|os.O_CREATE, os.ModePerm)
 	if err != nil {
 		return err
 	}

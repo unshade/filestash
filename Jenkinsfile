@@ -1,5 +1,9 @@
 pipeline {
     agent any
+    environment {
+        GOCACHE = "/tmp/go-cache"
+        npm_config_cache = "/tmp/npm-cache"
+    }
     options {
         buildDiscarder(logRotator(numToKeepStr: "10", artifactNumToKeepStr: "1"))
     }
@@ -22,11 +26,15 @@ pipeline {
         stage("Build") {
             steps {
                 script {
-                    docker.image("golang:1.24-bookworm").inside("--user=root") {
-                        sh "apt update -y && apt install -y libbrotli-dev brotli"
-                        sh "sed -i 's|plg_image_c|plg_image_golang|' server/plugin/index.go"
-                        sh "make init"
-                        sh "make build"
+                    docker.image("golang:1.27-trixie").inside() {
+                        sh '''
+                        sed -i 's|plg_image_c|plg_image_golang|' server/plugin/index.go
+                        make init
+                        CGO_ENABLED=0 make build
+                        find ./public \\( -name '*.map' -o -name pdf.sandbox.js -o -path '*/vendor/*.html' -o -path '*/codemirror/demo' -o -path '*/codemirror/doc' -o -path '*/codemirror/src' -o -path '*/codemirror/theme' -o -path '*/codemirror/bin' \\) -prune -exec rm -rf {} +
+                        CGO_ENABLED=0 GOARCH=amd64 go build -trimpath -ldflags="-s -w" --tags fts5 -o dist/release/filestash_linux_amd64.bin cmd/main.go
+                        CGO_ENABLED=0 GOARCH=arm64 go build -trimpath -ldflags="-s -w" --tags fts5 -o dist/release/filestash_linux_arm64.bin cmd/main.go
+                        '''
                     }
                 }
             }
@@ -35,7 +43,7 @@ pipeline {
             steps {
                 script {
                     // smoke test
-                    docker.image("golang:1.24-bookworm").inside("--user=root") {
+                    docker.image("golang:1.27-bookworm").inside() {
                         sh 'timeout 5 ./dist/filestash > access.log || code=$?; if [ $code -ne 124 ]; then exit $code; fi'
                         sh "cat access.log"
                         sh "cat access.log | grep -q \"\\[http\\] starting\""
@@ -43,21 +51,22 @@ pipeline {
                         sh "cat access.log | grep -vz \"ERR\""
                     }
                     // test frontend
-                    docker.image("node:20").inside("--user=root") {
+                    docker.image("node:20").inside() {
                         sh "cd public && npm install"
                         sh "cd public && npm run lint"
                         sh "cd public && npm run check"
                         // sh "cd public && npm run test"
                     }
                     // test backend
-                    docker.image("golang:1.24-bookworm").inside("--user=root") {
+                    docker.image("golang:1.27-bookworm").inside() {
                         sh "cp ./test/assets/* /tmp/"
+                        sh "make init"
                         sh "go generate ./test/unit_go/..."
                         sh "go get ./..."
-                        sh "go test -count=1 \$(go list ./server/... | grep -v \"server/plugin\" | grep -v \"server/generator\")"
+                        sh "CGO_ENABLED=0 go test -count=1 \$(go list ./server/... | grep -v \"server/plugin\" | grep -v \"server/generator\")"
                     }
                     // test e2e
-                    docker.image("machines/puppeteer:latest").inside("--user=root") {
+                    docker.image("machines/puppeteer:latest").inside() {
                         sh "cd ./test/e2e && npm install"
                         sh "chmod +x ./dist/filestash"
                         sh "./dist/filestash > /dev/null &"
@@ -70,13 +79,26 @@ pipeline {
 
         stage("Release") {
             steps {
+                script {
+                    docker.image("alpine").inside() {
+                        sh '''
+                        wget -q -O /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.2.1/upx-5.2.1-amd64_linux.tar.xz
+                        echo "402162aad30af47e60dbd767fb2e64ca394ace9727ba1f40283641f1d1b91657  /tmp/upx.tar.xz" | sha256sum -c
+                        tar -xJf /tmp/upx.tar.xz -C /tmp
+                        /tmp/upx-5.2.1-amd64_linux/upx --ultra-brute dist/release/*.bin
+                        '''
+                    }
+                }
+                withCredentials([sshUserPrivateKey(credentialsId: "app-filestash-hal", keyFileVariable: "KEY", usernameVariable: "USER")]) {
+                    sh 'scp -i "$KEY" dist/release/* "$USER@hal.filestash.app:/mnt/me-kerjean-pages/projects/filestash/downloads/latest/"'
+                }
                 sh "docker buildx build --no-cache --platform linux/amd64,linux/arm64 -t machines/filestash:latest --push ./docker/"
             }
         }
     }
     post {
         always {
-            cleanWs()
+            cleanWs(disableDeferredWipeout: true, deleteDirs: true)
         }
     }
 }

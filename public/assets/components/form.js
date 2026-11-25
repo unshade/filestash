@@ -60,14 +60,16 @@ export function $renderInput(options = {}) {
         } = props;
 
         const attrs = [];
-        attrs.push(($node) => $node.setAttribute("name", path.join(".")));
+        attrs.push(($node) => {
+            $node.setAttribute("name", path.join("."));
+            $node.setAttribute("autocorrect", "off");
+            $node.setAttribute("autocapitalize", "off");
+            $node.setAttribute("spellcheck", "false");
+        });
         if (id) attrs.push(($node) => $node.setAttribute("id", id));
         if (placeholder) attrs.push(($node) => $node.setAttribute("placeholder", placeholder));
         if (!autocomplete || props.autocomplete === false) attrs.push(($node) => {
             $node.setAttribute("autocomplete", "off");
-            $node.setAttribute("autocorrect", "off");
-            $node.setAttribute("autocapitalize", "off");
-            $node.setAttribute("spellcheck", "off");
             if (type === "password") {
                 $node.setAttribute("data-lpignore", "true"); // LastPass
                 $node.setAttribute("data-1p-ignore", "true"); // 1Password
@@ -145,7 +147,7 @@ export function $renderInput(options = {}) {
                 />
             `);
             if (!($input instanceof HTMLInputElement)) throw new ApplicationError("INTERNAL_ERROR", "assumption failed: missing input");
-            else if (value) $input.value = value;
+            else if (typeof value === "number") $input.value = String(value);
             attrs.map((setAttribute) => setAttribute($input));
             return $input;
         }
@@ -252,6 +254,7 @@ export function $renderInput(options = {}) {
                 />
             `);
             if (!($input instanceof HTMLInputElement)) throw new ApplicationError("INTERNAL_ERROR", "assumption failed: missing input");
+            else if (typeof value === "number") $input.value = new Date(value).toISOString().slice(0, 10);
             else if (value) $input.value = value;
             attrs.map((setAttribute) => setAttribute($input));
             return $input;
@@ -269,7 +272,7 @@ export function $renderInput(options = {}) {
             return $input;
         }
         case "image": {
-            const $img = createElement("<img />");
+            const $img = createElement("<img alt=\"preview\" />");
             $img.setAttribute("id", id);
             $img.setAttribute("src", value);
             return $img;
@@ -288,7 +291,7 @@ export function $renderInput(options = {}) {
             const draw = (val) => {
                 $preview.innerHTML = "";
                 if ((val || "").substring(0, 10) === "data:image") $preview.appendChild(createElement(`
-                    <img class="full-width" src="${safe(val)}" />
+                    <img class="full-width" src="${safe(val)}" alt="preview" />
                 `));
                 else if ((val || "").substring(0, 20) === "data:application/pdf") $preview.appendChild(createElement(`
                     <object class="full-width" type="application/pdf" data="${safe(val)}" style="height:250px;" />

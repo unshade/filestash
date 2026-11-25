@@ -34,7 +34,7 @@ export default async function(render, { mime, getDownloadUrl, getFilename, hasMe
     render($page);
     const $menubar = renderMenubar(
         qs($page, "component-menubar"),
-        buttonDownload(getFilename(), getDownloadUrl()),
+        buttonDownload(getDownloadUrl()),
     );
     const $dom = {
         thead: qs($page, ".thead"),
@@ -66,9 +66,8 @@ export default async function(render, { mime, getDownloadUrl, getFilename, hasMe
             buildHead(STATE, $dom, padding);
             buildRows(STATE.rows.slice(0, MAX_ROWS), STATE.header, $dom.tbody, padding, true, false);
         }),
-        rxjs.catchError((err) => rxjs.from(initDownloader()).pipe(
+        rxjs.catchError(() => rxjs.from(initDownloader()).pipe(
             rxjs.tap(() => ctrlDownloader(render, { acl$, getFilename, getDownloadUrl })),
-            rxjs.tap(() => console.log("cannot open file", err)),
             rxjs.mergeMap(() => rxjs.EMPTY),
         )),
         rxjs.share(),
@@ -195,7 +194,7 @@ function buildHead(STATE, $dom, padding) {
         `);
         $th.setAttribute("title", name);
         $th.textContent = name;
-        $th.appendChild(createElement(`<img class="no-select" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+CiAgPHBhdGggc3R5bGU9ImZpbGw6IzAwMDAwMDtmaWxsLW9wYWNpdHk6MC41MzMzMzMyMSIgZD0ibSA3LjcwNSw4LjA0NSA0LjU5LDQuNTggNC41OSwtNC41OCAxLjQxLDEuNDEgLTYsNiAtNiwtNiB6IiAvPgogIDxwYXRoIGZpbGw9Im5vbmUiIGQ9Ik0wLS4yNWgyNHYyNEgweiIgLz4KPC9zdmc+Cg==" />`));
+        $th.appendChild(createElement(`<img class="no-select" alt="sort" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+CiAgPHBhdGggc3R5bGU9ImZpbGw6IzAwMDAwMDtmaWxsLW9wYWNpdHk6MC41MzMzMzMyMSIgZD0ibSA3LjcwNSw4LjA0NSA0LjU5LDQuNTggNC41OSwtNC41OCAxLjQxLDEuNDEgLTYsNiAtNiwtNiB6IiAvPgogIDxwYXRoIGZpbGw9Im5vbmUiIGQ9Ik0wLS4yNWgyNHYyNEgweiIgLz4KPC9zdmc+Cg==" />`));
         let ascending = null;
         qs($th, "img").onclick = (e) => {
             ascending = !ascending;

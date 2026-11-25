@@ -99,7 +99,7 @@ func (this sqliteIndex) Change() (Manager, error) {
 	if err != nil {
 		return nil, toErr(err)
 	}
-	return sqliteQueries{tx}, nil
+	return sqliteQueries{tx, this.db}, nil
 }
 
 func (this sqliteIndex) Close() error {
@@ -108,18 +108,26 @@ func (this sqliteIndex) Close() error {
 
 type sqliteQueries struct {
 	tx *sql.Tx
+	db *sql.DB
 }
 
 func (this sqliteQueries) Commit() error {
-	return this.tx.Commit()
+	if err := this.tx.Commit(); err != nil {
+		return toErr(err)
+	}
+	this.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	return nil
 }
 
 func (this sqliteQueries) IndexTimeGet(path string) (time.Time, error) {
-	var t string
+	var t sql.NullString
 	if err := this.tx.QueryRow("SELECT indexTime FROM file WHERE path = ?", path).Scan(&t); err != nil {
 		return time.Now(), toErr(err)
 	}
-	tm, err := time.Parse(time.RFC3339, t)
+	if !t.Valid {
+		return time.Time{}, nil
+	}
+	tm, err := time.Parse(time.RFC3339, t.String)
 	if err != nil {
 		return tm, toErr(err)
 	}
@@ -169,12 +177,12 @@ func (this *RowMapper) Close() error {
 
 func (this sqliteQueries) FindNew(maxSize int, filetypes []string) (RowMapper, error) {
 	for i := 0; i < len(filetypes); i++ {
-		filetypes[i] = "'" + strings.TrimSpace(filetypes[i]) + "'"
+		filetypes[i] = "'" + strings.ToLower(strings.TrimSpace(filetypes[i])) + "'"
 	}
 
 	rows, err := this.tx.Query(
 		"SELECT filename, type, path, size FROM file WHERE ("+
-			"  type = 'file' AND size < ? AND filetype IN ("+strings.Join(filetypes, ",")+") AND indexTime IS NULL "+
+			"  type = 'file' AND size < ? AND lower(filetype) IN ("+strings.Join(filetypes, ",")+") AND indexTime IS NULL "+
 			") LIMIT 2",
 		maxSize,
 	)
@@ -205,7 +213,7 @@ func (this sqliteQueries) FindParent(path string) (RowMapper, error) {
 
 func (this sqliteQueries) FileMetaUpdate(path string, f fs.FileInfo) error {
 	_, err := this.tx.Exec(
-		"UPDATE file SET size = ?, modTime = ? indexTime = NULL WHERE path = ?",
+		"UPDATE file SET size = ?, modTime = ?, indexTime = CASE WHEN type = 'file' THEN NULL ELSE indexTime END WHERE path = ?",
 		f.Size(), f.ModTime(), path,
 	)
 	return toErr(err)
@@ -224,7 +232,7 @@ func (this sqliteQueries) FileContentUpdate(path string, reader io.ReadCloser) e
 
 func (this sqliteQueries) FileCreate(f fs.FileInfo, parentPath string, withUpsert bool) (err error) {
 	name := f.Name()
-	path := filepath.Join(parentPath, f.Name())
+	path := filepath.ToSlash(filepath.Join(parentPath, f.Name()))
 	if f.IsDir() {
 		sql := "INSERT INTO file(path, parent, filename, type, size, modTime, indexTime) VALUES(?, ?, ?, ?, ?, ?, ?)"
 		if withUpsert {

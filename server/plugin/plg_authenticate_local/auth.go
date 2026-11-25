@@ -11,6 +11,7 @@ import (
 	"text/template"
 
 	. "github.com/mickael-kerjean/filestash/server/common"
+	"github.com/mickael-kerjean/filestash/server/pkg/env"
 
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
@@ -150,10 +151,10 @@ func (this SimpleAuth) EntryPoint(idpParams map[string]string, req *http.Request
 	res.Write([]byte(Page(`
         <form method="post" class="component_middleware">
             <label>
-                <input type="text" name="user" value="" placeholder="Email" />
+                <input type="text" name="user" value="" placeholder="Email" autocomplete="username" />
             </label>
             <label>
-                <input type="password" name="password" value="" placeholder="Password" />
+                <input type="password" name="password" value="" placeholder="Password" autocomplete="current-password" />
             </label>
             <button>CONNECT</button>
             ` + getFlash() + `
@@ -241,7 +242,7 @@ func withMFA(user User, session string) User {
 	if session == "" {
 		return user
 	}
-	data, err := DecryptString(SECRET_KEY_DERIVATE_FOR_USER, session)
+	data, err := DecryptString(env.SECRET_KEY_DERIVATE_FOR_USER, session)
 	if err != nil {
 		return User{}
 	}
@@ -259,7 +260,7 @@ func (user User) EncryptedString() string {
 	if err != nil {
 		return ""
 	}
-	d, err := EncryptString(SECRET_KEY_DERIVATE_FOR_USER, string(b))
+	d, err := EncryptString(env.SECRET_KEY_DERIVATE_FOR_USER, string(b))
 	if err != nil {
 		return ""
 	}

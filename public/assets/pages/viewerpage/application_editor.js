@@ -38,7 +38,7 @@ export default async function(render, { acl$, getFilename, getDownloadUrl, mime 
         fab: () => qs($page, `[is="component-fab"]`),
     };
     render($page);
-    renderMenubar($dom.menubar(), buttonDownload(getFilename(), getDownloadUrl()));
+    renderMenubar($dom.menubar(), buttonDownload(getDownloadUrl()));
 
     const content$ = new rxjs.ReplaySubject(1);
 
@@ -294,8 +294,10 @@ function loadMode(ext) {
     else if (ext === "yml" || ext === "yaml") mode = "yaml";
     else if (ext === "lua") mode = "lua";
     else if (ext === "csv") mode = "spreadsheet";
-    else if (ext === "rs" || ext === "rlib") mode = "rust";
-    else if (ext === "latex" || ext === "tex") mode = "stex";
+    else if (ext === "rs" || ext === "rlib") {
+        mode = "rust";
+        before = loadJS(import.meta.url, "../../lib/vendor/codemirror/addon/mode/simple.js").then(() => Promise.resolve(null));
+    } else if (ext === "latex" || ext === "tex") mode = "stex";
     else if (ext === "diff" || ext === "patch") mode = "diff";
     else if (ext === "sparql") mode = "sparql";
     else if (ext === "properties") mode = "properties";

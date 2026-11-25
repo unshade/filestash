@@ -15,9 +15,10 @@ import (
 	"time"
 
 	. "github.com/mickael-kerjean/filestash/server/common"
-	"github.com/mickael-kerjean/filestash/server/ctrl"
+
 	"github.com/mickael-kerjean/filestash/server/middleware"
-	"github.com/mickael-kerjean/filestash/server/model"
+	"github.com/mickael-kerjean/filestash/server/pkg/env"
+	"github.com/mickael-kerjean/filestash/server/pkg/permissions"
 
 	"github.com/gorilla/mux"
 	"github.com/patrickmn/go-cache"
@@ -44,8 +45,6 @@ type onlyOfficeCacheData struct {
 }
 
 func init() {
-	SECRET_KEY_DERIVATE_FOR_ONLYOFFICE = Hash("ONLYOFFICE_"+SECRET_KEY, len(SECRET_KEY))
-	onlyoffice_cache = cache.New(720*time.Minute, 720*time.Minute)
 	plugin_enable = func() bool {
 		return Config.Get("features.office.enable").Schema(func(f *FormElement) *FormElement {
 			if f == nil {
@@ -166,6 +165,9 @@ func init() {
 	}
 
 	Hooks.Register.Onload(func() {
+		SECRET_KEY_DERIVATE_FOR_ONLYOFFICE = Hash("ONLYOFFICE_"+env.SECRET_KEY, len(env.SECRET_KEY))
+		onlyoffice_cache = cache.New(720*time.Minute, 720*time.Minute)
+
 		plugin_enable()
 		server_url()
 		can_chat()
@@ -176,7 +178,7 @@ func init() {
 		can_print()
 	})
 
-	Hooks.Register.HttpEndpoint(func(r *mux.Router, app *App) error {
+	Hooks.Register.HttpEndpoint(func(r *mux.Router) error {
 		oods := r.PathPrefix("/onlyoffice").Subrouter()
 		oods.PathPrefix("/static/").HandlerFunc(StaticHandler).Methods("GET", "POST")
 		oods.HandleFunc("/event", OnlyOfficeEventHandler).Methods("POST")
@@ -257,7 +259,7 @@ func IframeContentHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 		Log.Warning("plg_editor_onlyoffice::handler request_disabled")
 		return
 	}
-	if model.CanRead(ctx) == false {
+	if permissions.CanRead(ctx) == false {
 		SendErrorResult(res, ErrPermissionDenied)
 		return
 	} else if server_url() == "" {
@@ -281,7 +283,7 @@ func IframeContentHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 		localip                 string
 	)
 	query := req.URL.Query()
-	path, err := ctrl.PathBuilder(ctx, query.Get("path"))
+	path, err := PathBuilder(ctx, query.Get("path"))
 	if err != nil {
 		SendErrorResult(res, err)
 		return
@@ -294,11 +296,11 @@ func IframeContentHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 		return
 	}
 	key = HashStream(f, 20)
-	key = Hash(key+userId+path, 20)
+	key = Hash(key+userId+path+fmt.Sprint(permissions.CanEdit(ctx)), 20)
 
 	filename = filepath.Base(path)
 	oodsMode = func() string {
-		if model.CanEdit(ctx) == false {
+		if permissions.CanEdit(ctx) == false {
 			return "view"
 		}
 		return "edit"
@@ -402,8 +404,18 @@ func IframeContentHandler(ctx *App, res http.ResponseWriter, req *http.Request) 
 		}
 		return ""
 	}(path)
+	cData := &onlyOfficeCacheData{path, nil, ctx.Backend.Cat}
+	if permissions.CanEdit(ctx) {
+		cData.Save = ctx.Backend.Save
+		for _, auth := range Hooks.Get.AuthorisationMiddleware() {
+			if auth.Save(ctx, path) != nil {
+				cData.Save = nil
+				break
+			}
+		}
+	}
+	onlyoffice_cache.Set(key, cData, cache.DefaultExpiration)
 	filetype = strings.TrimPrefix(filepath.Ext(filename), ".")
-	onlyoffice_cache.Set(key, &onlyOfficeCacheData{path, ctx.Backend.Save, ctx.Backend.Cat}, cache.DefaultExpiration)
 
 	tmpl, err := template.New("onlyoffice").Parse(`<!DOCTYPE html>
 <html lang="en">
@@ -581,19 +593,25 @@ func OnlyOfficeEventHandler(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 		cData, valid := saveObject.(*onlyOfficeCacheData)
-		if valid == false {
+		if valid == false || cData.Save == nil {
 			res.WriteHeader(http.StatusInternalServerError)
 			res.Write([]byte(`{"error": 1, "message": "[internal error] invalid save handler"}`))
 			return
 		}
-
-		r, err := http.NewRequest("GET", event.Url, nil)
+		u, err := url.Parse(event.Url)
+		if err != nil {
+			res.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		s, _ := url.Parse(server_url())
+		u.Scheme, u.Host, u.Path = s.Scheme, s.Host, strings.TrimPrefix(u.Path, "/onlyoffice/static")
+		r, err := http.NewRequest("GET", u.String(), nil)
 		if err != nil {
 			res.WriteHeader(http.StatusInternalServerError)
 			res.Write([]byte(`{"error": 1, "message": "couldn't fetch the document on the oods server"}`))
 			return
 		}
-		f, err := HTTPClient.Do(r)
+		f, err := HTTPClient().Do(r)
 		if err = cData.Save(cData.Path, f.Body); err != nil {
 			res.WriteHeader(http.StatusInternalServerError)
 			res.Write([]byte(`{"error": 1, "message": "error while saving the document"}`))

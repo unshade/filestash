@@ -3,16 +3,18 @@ package model
 import (
 	"database/sql"
 
-	"github.com/mickael-kerjean/filestash/server/common"
+	"github.com/mickael-kerjean/filestash/server/pkg/env"
+	"github.com/mickael-kerjean/filestash/server/pkg/utils"
 )
 
 var db *sql.DB
 
 func InitState() (err error) {
-	db, err = sql.Open("sqlite3", common.GetAbsolutePath(common.DB_PATH, "workflow.sql"))
+	db, err = sql.Open("sqlite3", utils.GetAbsolutePath(env.DB_PATH, "workflow.sql"))
 	if err != nil {
 		return err
 	}
+	db.SetMaxOpenConns(1)
 
 	db.Exec(`
 	CREATE TABLE IF NOT EXISTS workflows (
@@ -42,8 +44,8 @@ func InitState() (err error) {
 
 	db.Exec(`
 	UPDATE jobs
-		SET status = 'READY', updated_at = CURRENT_TIMESTAMP
-		WHERE status IN ('RUNNING', 'CLAIMED')`)
+		SET status = 'FAILURE', updated_at = CURRENT_TIMESTAMP
+		WHERE status IN ('READY', 'PENDING', 'CLAIMED', 'RUNNING')`)
 
 	return nil
 }

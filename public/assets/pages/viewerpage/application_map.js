@@ -24,7 +24,7 @@ export default async function(render, { mime, getDownloadUrl = nop, getFilename 
     render($page);
     const $menubar = renderMenubar(
         qs($page, "component-menubar"),
-        buttonDownload(getFilename(), getDownloadUrl()),
+        buttonDownload(getDownloadUrl()),
     );
     const map = window.L.map("map");
     const removeLoader = createLoader(qs($page, "#map"));
@@ -89,16 +89,21 @@ function loadGeoJSON(map, content) {
             if (n > 10000) return;
             const { group = "global", ...props } = feature.properties || {};
             const featureObject = (function() {
-                if (props["name"]) shape = shape.bindPopup(props["name"]);
+                if (props["name"]) shape = shape.bindPopup(safe(props["name"]));
                 switch (props["popup::type"]) {
                 case "text":
-                    shape = shape.bindPopup(props["popup::content"]);
+                    shape = shape.bindPopup(safe(props["popup::content"]));
                     break;
                 case "html":
                     shape = shape.bindPopup((function() {
+                        const $tpl = document.createElement("template");
+                        $tpl.innerHTML = props["popup::content"];
+                        $tpl.content.querySelectorAll("*").forEach(($el) => {
+                            if (/^(SCRIPT|IFRAME|OBJECT|EMBED|STYLE|LINK|META|TEMPLATE)$/.test($el.tagName)) return $el.remove();
+                            $el.getAttributeNames().forEach((name) => $el.removeAttribute(name));
+                        });
                         const $richLabel = window.L.DomUtil.create("div", "");
-                        $richLabel.innerHTML = props["popup::content"];
-                        if ($richLabel.querySelector("script")) $richLabel.innerHTML = `__BLOCKED_CONTENT__`;
+                        $richLabel.appendChild($tpl.content);
                         return $richLabel;
                     })(), {
                         className: "leaflet-measure-resultpopup",
